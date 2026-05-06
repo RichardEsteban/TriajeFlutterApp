@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
+import 'database_helper.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  if (Platform.isWindows || Platform.isLinux) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   runApp(const NutriApp());
 }
 
@@ -154,25 +161,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    // Simular carga de datos
+    final db = DatabaseHelper();
+    final childrenData = await db.getChildren();
+    
+    List<Child> loadedChildren = [];
+    for (var childMap in childrenData) {
+      final measurementsData = await db.getMeasurementsForChild(childMap['id']);
+      
+      List<Measurement> measurements = measurementsData.map((m) {
+        return Measurement(
+          weight: (m['weight'] as num).toDouble(),
+          height: (m['height'] as num).toDouble(),
+          nutritionalStatus: m['nutritionalStatus'],
+          statusColor: Color(m['statusColor'] as int),
+          recommendations: (m['recommendations'] as String).split('|'),
+          date: DateTime.parse(m['date']),
+        );
+      }).toList();
+
+      loadedChildren.add(Child(
+        id: childMap['id'],
+        name: childMap['name'],
+        birthDate: DateTime.parse(childMap['birthDate']),
+        measurements: measurements,
+      ));
+    }
+
     setState(() {
-      children = [
-        Child(
-          id: '1',
-          name: 'Juan Pérez',
-          birthDate: DateTime(2020, 1, 1),
-          measurements: [
-            Measurement(
-              weight: 10,
-              height: 80,
-              nutritionalStatus: 'Normal',
-              statusColor: Colors.green,
-              recommendations: ['Mantener.'],
-              date: DateTime.now().subtract(const Duration(days: 30)),
-            ),
-          ],
-        ),
-      ];
+      children = loadedChildren;
       _filteredChildren = children;
     });
   }
@@ -184,11 +200,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _addChild(Child child) {
-    setState(() {
-      children.add(child);
-      _filterChildren(); // Re-aplicar filtro tras agregar
+  void _addChild(Child child) async {
+    final db = DatabaseHelper();
+    
+    await db.insertChild({
+      'id': child.id,
+      'name': child.name,
+      'birthDate': child.birthDate.toIso8601String(),
     });
+
+    for (var m in child.measurements) {
+      await db.insertMeasurement({
+        'id': DateTime.now().millisecondsSinceEpoch.toString() + Random().nextInt(100).toString(),
+        'childId': child.id,
+        'weight': m.weight,
+        'height': m.height,
+        'nutritionalStatus': m.nutritionalStatus,
+        'statusColor': m.statusColor.value,
+        'recommendations': m.recommendations.join('|'),
+        'date': m.date.toIso8601String(),
+      });
+    }
+
+    _loadData();
   }
 
   @override
@@ -442,10 +476,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showAddMeasurementDialog(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => RegistrationScreen(child: widget.child))).then((result) {
-      if (result != null) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => RegistrationScreen(child: widget.child))).then((result) async {
+      if (result != null && result is Measurement) {
+        final db = DatabaseHelper();
+        await db.insertMeasurement({
+          'id': DateTime.now().millisecondsSinceEpoch.toString(),
+          'childId': widget.child.id,
+          'weight': result.weight,
+          'height': result.height,
+          'nutritionalStatus': result.nutritionalStatus,
+          'statusColor': result.statusColor.value,
+          'recommendations': result.recommendations.join('|'),
+          'date': result.date.toIso8601String(),
+        });
+        
         setState(() {
           widget.child.measurements.add(result);
+          widget.child.measurements.sort((a, b) => b.date.compareTo(a.date));
         });
       }
     });
