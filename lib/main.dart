@@ -94,8 +94,12 @@ class NutriLogic {
           'Aumentar la ingesta calórica con alimentos nutritivos.',
           'Incluir snacks saludables entre comidas (frutos secos, yogurt).',
           'Asegurar un consumo adecuado de proteínas.',
-          'Consultar con un pediatra para descartar causas subyacentes.'
         ],
+        'foodGroups': {
+          'Proteínas': 'Huevo, pollo, pescado, lentejas, frijoles.',
+          'Grasas Saludables': 'Palta (aguacate), aceite de oliva, maní, nueces.',
+          'Energía': 'Plátano, avena, camote, arroz integral.'
+        }
       };
     } else if (imc < 25) {
       return {
@@ -103,32 +107,29 @@ class NutriLogic {
         'color': Colors.green,
         'tips': [
           'Mantener una alimentación variada y equilibrada.',
-          'Fomentar la actividad física diaria (mínimo 60 min).',
-          'Limitar el consumo de ultraprocesados y bebidas azucaradas.',
-          'Asegurar un buen descanso nocturno.'
+          'Fomentar la actividad física diaria.',
+          'Limitar ultraprocesados y bebidas azucaradas.',
         ],
-      };
-    } else if (imc < 30) {
-      return {
-        'status': 'Sobrepeso',
-        'color': Colors.orange,
-        'tips': [
-          'Aumentar el consumo de frutas y verduras frescas.',
-          'Reducir las porciones de carbohidratos refinados.',
-          'Evitar comer frente a pantallas (TV, tablet).',
-          'Preferir el agua sobre jugos o gaseosas.'
-        ],
+        'foodGroups': {
+          'Variedad': 'Brócoli, espinaca, manzana, papaya.',
+          'Proteínas Magras': 'Pescado, pavita, queso fresco.',
+          'Hidratación': 'Agua pura, jugos de fruta natural sin azúcar.'
+        }
       };
     } else {
       return {
-        'status': 'Obesidad',
-        'color': Colors.red,
+        'status': imc < 30 ? 'Sobrepeso' : 'Obesidad',
+        'color': imc < 30 ? Colors.orange : Colors.red,
         'tips': [
-          'Establecer horarios fijos para las comidas.',
-          'Eliminar por completo bebidas azucaradas y frituras.',
-          'Realizar actividad física en familia.',
-          'Es fundamental el seguimiento con un nutricionista infantil.'
+          'Aumentar el consumo de fibras y verduras.',
+          'Reducir porciones de carbohidratos refinados.',
+          'Preferir el agua sobre jugos o gaseosas.',
         ],
+        'foodGroups': {
+          'Fibras': 'Avena, chia, verduras verdes, zanahoria cruda.',
+          'Frutas de bajo azúcar': 'Melón, fresas, mandarina, sandía.',
+          'Sustitutos': 'Pan integral en vez de blanco, stevia en vez de azúcar.'
+        }
       };
     }
   }
@@ -560,10 +561,77 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ],
                       ),
                     )),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.restaurant_menu, size: 18),
+                    label: const Text('Ver ejemplos de alimentos'),
+                    onPressed: () => _showFoodExamples(context, measurement.nutritionalStatus),
+                  ),
+                ),
               ],
             ),
           )
         ],
+      ),
+    );
+  }
+
+  void _showFoodExamples(BuildContext context, String status) {
+    // Obtenemos los grupos de alimentos basados en el estado
+    // Para simplificar en esta vista, re-consultamos la lógica
+    // En una app real, esto podría venir del modelo
+    final diag = NutriLogic.getDiagnosis(20, 100); // Dummy para obtener estructura
+    // Buscamos los alimentos correctos según el status
+    Map<String, String> foods = {};
+    if (status.contains('Bajo')) {
+      foods = {
+        'Proteínas': 'Huevo, pollo, lentejas, frijoles.',
+        'Grasas Saludables': 'Palta, aceite de oliva, maní.',
+        'Energía': 'Plátano, avena, camote.'
+      };
+    } else if (status == 'Normal') {
+      foods = {
+        'Variedad': 'Brócoli, espinaca, manzana, papaya.',
+        'Proteínas Magras': 'Pescado, pavita, queso fresco.',
+        'Hidratación': 'Agua pura, jugos sin azúcar.'
+      };
+    } else {
+      foods = {
+        'Fibras': 'Avena integral, chia, verduras verdes.',
+        'Frutas recomendadas': 'Melón, fresas, mandarina.',
+        'Sustitutos': 'Pan integral, stevia, alimentos al vapor.'
+      };
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Alimentos sugeridos para $status', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            ...foods.entries.map((e) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                  Text(e.value),
+                ],
+              ),
+            )),
+            const SizedBox(height: 16),
+            Center(
+              child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+            )
+          ],
+        ),
       ),
     );
   }
