@@ -336,8 +336,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildChart() {
-    final measurements = widget.child.measurements;
-    if (measurements.length < 2) {
+    // Ordenamos cronológicamente para el gráfico
+    final chartMeasurements = List<Measurement>.from(widget.child.measurements)
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    if (chartMeasurements.length < 2) {
       return Card(
         child: Container(
           height: 150,
@@ -355,7 +358,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
 
-    final firstTimestamp = measurements.first.date.millisecondsSinceEpoch.toDouble();
+    final firstTimestamp = chartMeasurements.first.date.millisecondsSinceEpoch.toDouble();
 
     return Card(
       elevation: 4,
@@ -364,7 +367,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
         child: Column(
           children: [
-            const Text('Evolución de Peso y IMC', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Evolución de Peso y IMC', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  onPressed: () => _showChartInfo(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
             SizedBox(
               height: 250,
@@ -380,7 +395,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         getTitlesWidget: (value, meta) {
-                          // Mostrar solo algunos puntos para no saturar
                           return const Text('');
                         },
                       ),
@@ -393,7 +407,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   borderData: FlBorderData(show: true, border: Border.all(color: Colors.black12)),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: measurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.weight)).toList(),
+                      spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.weight)).toList(),
                       isCurved: true,
                       color: Colors.blue,
                       barWidth: 4,
@@ -401,7 +415,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.1)),
                     ),
                     LineChartBarData(
-                      spots: measurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.bmi)).toList(),
+                      spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.bmi)).toList(),
                       isCurved: true,
                       color: Colors.green,
                       barWidth: 4,
@@ -420,10 +434,89 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 const SizedBox(width: 20),
                 _buildLegendItem('IMC', Colors.green),
               ],
-            )
+            ),
+            const Divider(height: 32),
+            _buildSummaryText(chartMeasurements),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSummaryText(List<Measurement> measurements) {
+    if (measurements.length < 2) return const SizedBox.shrink();
+
+    final latest = measurements.last;
+    final previous = measurements[measurements.length - 2];
+    
+    double weightDiff = latest.weight - previous.weight;
+    String weightText = weightDiff > 0 
+        ? "ha aumentado ${weightDiff.toStringAsFixed(1)}kg" 
+        : weightDiff < 0 
+            ? "ha disminuido ${weightDiff.abs().toStringAsFixed(1)}kg" 
+            : "se mantiene igual";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Resumen de progreso:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+          const SizedBox(height: 4),
+          Text(
+            'Desde la última medición, el peso $weightText. '
+            'Su estado actual es "${latest.nutritionalStatus}".',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChartInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Cómo leer este gráfico?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoItem(Colors.blue, 'Peso (Línea Azul):', 'Muestra cuánto pesa el niño en kg. Es normal que suba a medida que crece.'),
+            const SizedBox(height: 12),
+            _buildInfoItem(Colors.green, 'IMC (Línea Verde):', 'Es la relación entre peso y altura. Si sube mucho, indica riesgo de sobrepeso; si baja mucho, riesgo de bajo peso.'),
+            const SizedBox(height: 12),
+            const Text('La meta es que ambas líneas tengan una tendencia estable y no cambios bruscos.', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(Color color, String title, String description) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: Text(description, style: const TextStyle(fontSize: 13)),
+        ),
+      ],
     );
   }
 
