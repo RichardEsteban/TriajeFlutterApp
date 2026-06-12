@@ -20,17 +20,27 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'nutri_expert.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Incrementamos la versión
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
+      CREATE TABLE groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE children (
         id TEXT PRIMARY KEY,
+        groupId TEXT,
         name TEXT NOT NULL,
-        birthDate TEXT NOT NULL
+        birthDate TEXT NOT NULL,
+        FOREIGN KEY (groupId) REFERENCES groups (id)
       )
     ''');
 
@@ -47,6 +57,41 @@ class DatabaseHelper {
         FOREIGN KEY (childId) REFERENCES children (id)
       )
     ''');
+    
+    // Insertar un grupo por defecto
+    await db.insert('groups', {'id': 'default', 'name': 'Sin Grupo'});
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('CREATE TABLE groups (id TEXT PRIMARY KEY, name TEXT NOT NULL)');
+      await db.execute('ALTER TABLE children ADD COLUMN groupId TEXT');
+      await db.insert('groups', {'id': 'default', 'name': 'Sin Grupo'});
+      await db.execute('UPDATE children SET groupId = "default"');
+    }
+  }
+
+  // Métodos para Grupos
+  Future<int> insertGroup(Map<String, dynamic> group) async {
+    Database db = await database;
+    return await db.insert('groups', group);
+  }
+
+  Future<List<Map<String, dynamic>>> getGroups() async {
+    Database db = await database;
+    return await db.query('groups');
+  }
+
+  Future<int> updateGroup(String id, Map<String, dynamic> group) async {
+    Database db = await database;
+    return await db.update('groups', group, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteGroup(String id) async {
+    Database db = await database;
+    // Mover niños al grupo por defecto antes de borrar
+    await db.update('children', {'groupId': 'default'}, where: 'groupId = ?', whereArgs: [id]);
+    return await db.delete('groups', where: 'id = ?', whereArgs: [id]);
   }
 
   // Métodos para Children
@@ -58,6 +103,11 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getChildren() async {
     Database db = await database;
     return await db.query('children');
+  }
+
+  Future<List<Map<String, dynamic>>> getChildrenByGroup(String groupId) async {
+    Database db = await database;
+    return await db.query('children', where: 'groupId = ?', whereArgs: [groupId]);
   }
 
   Future<List<Map<String, dynamic>>> searchChildren(String query) async {
@@ -85,16 +135,6 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getMeasurementsForChild(String childId) async {
     Database db = await database;
     return await db.query('measurements', where: 'childId = ?', whereArgs: [childId], orderBy: 'date DESC');
-  }
-
-  Future<List<Map<String, dynamic>>> getRecentMeasurements(String childId, int months) async {
-    Database db = await database;
-    DateTime cutoff = DateTime.now().subtract(Duration(days: months * 30));
-    return await db.query('measurements',
-      where: 'childId = ? AND date >= ?',
-      whereArgs: [childId, cutoff.toIso8601String()],
-      orderBy: 'date ASC'
-    );
   }
 
   Future<int> deleteMeasurement(String id) async {

@@ -20,24 +20,34 @@ class NutriApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Nutri Expert',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const DashboardScreen(),
+      home: const GroupListScreen(),
     );
   }
 }
 
-// --- MODELO DE DATOS ---
+// --- MODELOS DE DATOS ---
+class Group {
+  final String id;
+  final String name;
+
+  Group({required this.id, required this.name});
+}
+
 class Child {
   final String id;
+  final String groupId;
   final String name;
   final DateTime birthDate;
   final List<Measurement> measurements;
 
   Child({
     required this.id,
+    required this.groupId,
     required this.name,
     required this.birthDate,
     required this.measurements,
@@ -92,83 +102,154 @@ class NutriLogic {
         'color': Colors.redAccent,
         'tips': [
           'Aumentar la ingesta calórica con alimentos nutritivos.',
-          'Incluir snacks saludables entre comidas (frutos secos, yogurt).',
+          'Incluir snacks saludables entre comidas.',
           'Asegurar un consumo adecuado de proteínas.',
         ],
-        'foodGroups': {
-          'Proteínas': 'Huevo, pollo, pescado, lentejas, frijoles.',
-          'Grasas Saludables': 'Palta (aguacate), aceite de oliva, maní, nueces.',
-          'Energía': 'Plátano, avena, camote, arroz integral.'
-        }
       };
     } else if (imc < 25) {
       return {
         'status': 'Normal',
         'color': Colors.green,
         'tips': [
-          'Mantener una alimentación variada y equilibrada.',
+          'Mantener una alimentación variada.',
           'Fomentar la actividad física diaria.',
-          'Limitar ultraprocesados y bebidas azucaradas.',
+          'Limitar ultraprocesados.',
         ],
-        'foodGroups': {
-          'Variedad': 'Brócoli, espinaca, manzana, papaya.',
-          'Proteínas Magras': 'Pescado, pavita, queso fresco.',
-          'Hidratación': 'Agua pura, jugos de fruta natural sin azúcar.'
-        }
       };
     } else {
       return {
         'status': imc < 30 ? 'Sobrepeso' : 'Obesidad',
         'color': imc < 30 ? Colors.orange : Colors.red,
         'tips': [
-          'Aumentar el consumo de fibras y verduras.',
-          'Reducir porciones de carbohidratos refinados.',
-          'Preferir el agua sobre jugos o gaseosas.',
+          'Aumentar el consumo de fibras.',
+          'Reducir carbohidratos refinados.',
+          'Preferir el agua pura.',
         ],
-        'foodGroups': {
-          'Fibras': 'Avena, chia, verduras verdes, zanahoria cruda.',
-          'Frutas de bajo azúcar': 'Melón, fresas, mandarina, sandía.',
-          'Sustitutos': 'Pan integral en vez de blanco, stevia en vez de azúcar.'
-        }
       };
     }
   }
 }
 
-// --- PANTALLA PRINCIPAL ---
-class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+// --- PANTALLA DE GRUPOS (FAMILIAS) ---
+class GroupListScreen extends StatefulWidget {
+  const GroupListScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<GroupListScreen> createState() => _GroupListScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  List<Child> children = [];
-  final TextEditingController _searchController = TextEditingController();
-  List<Child> _filteredChildren = [];
+class _GroupListScreenState extends State<GroupListScreen> {
+  List<Group> groups = [];
 
   @override
   void initState() {
     super.initState();
-    _loadData();
-    _searchController.addListener(_filterChildren);
+    _loadGroups();
+  }
+
+  Future<void> _loadGroups() async {
+    final db = DatabaseHelper();
+    final data = await db.getGroups();
+    setState(() {
+      groups = data.map((e) => Group(id: e['id'], name: e['name'])).toList();
+    });
+  }
+
+  void _showAddGroupDialog({Group? group}) {
+    final controller = TextEditingController(text: group?.name);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(group == null ? 'Nueva Familia/Grupo' : 'Editar Nombre'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'Ej: Familia Gonzales'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                final db = DatabaseHelper();
+                if (group == null) {
+                  await db.insertGroup({'id': DateTime.now().toString(), 'name': controller.text});
+                } else {
+                  await db.updateGroup(group.id, {'name': controller.text});
+                }
+                Navigator.pop(context);
+                _loadGroups();
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Nutri Expert - Grupos')),
+      body: groups.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: groups.length,
+              itemBuilder: (context, index) {
+                final group = groups[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.group, color: Colors.blue),
+                    title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Toca para ver integrantes'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit, size: 20),
+                      onPressed: () => _showAddGroupDialog(group: group),
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => ChildrenListScreen(group: group)),
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddGroupDialog(),
+        label: const Text('Nuevo Grupo'),
+        icon: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+// --- PANTALLA DE NIÑOS POR GRUPO ---
+class ChildrenListScreen extends StatefulWidget {
+  final Group group;
+  const ChildrenListScreen({super.key, required this.group});
+
+  @override
+  State<ChildrenListScreen> createState() => _ChildrenListScreenState();
+}
+
+class _ChildrenListScreenState extends State<ChildrenListScreen> {
+  List<Child> children = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChildren();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadChildren() async {
     final db = DatabaseHelper();
-    final childrenData = await db.getChildren();
+    final data = await db.getChildrenByGroup(widget.group.id);
     
-    List<Child> loadedChildren = [];
-    for (var childMap in childrenData) {
+    List<Child> loaded = [];
+    for (var childMap in data) {
       final measurementsData = await db.getMeasurementsForChild(childMap['id']);
-      
       List<Measurement> measurements = measurementsData.map((m) {
         return Measurement(
           weight: (m['weight'] as num).toDouble(),
@@ -180,8 +261,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }).toList();
 
-      loadedChildren.add(Child(
+      loaded.add(Child(
         id: childMap['id'],
+        groupId: childMap['groupId'] ?? '',
         name: childMap['name'],
         birthDate: DateTime.parse(childMap['birthDate']),
         measurements: measurements,
@@ -189,122 +271,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     setState(() {
-      children = loadedChildren;
-      _filteredChildren = children;
+      children = loaded;
     });
-  }
-
-  void _filterChildren() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredChildren = children.where((child) => child.name.toLowerCase().contains(query)).toList();
-    });
-  }
-
-  void _addChild(Child child) async {
-    final db = DatabaseHelper();
-    
-    await db.insertChild({
-      'id': child.id,
-      'name': child.name,
-      'birthDate': child.birthDate.toIso8601String(),
-    });
-
-    for (var m in child.measurements) {
-      await db.insertMeasurement({
-        'id': DateTime.now().millisecondsSinceEpoch.toString() + Random().nextInt(100).toString(),
-        'childId': child.id,
-        'weight': m.weight,
-        'height': m.height,
-        'nutritionalStatus': m.nutritionalStatus,
-        'statusColor': m.statusColor.value,
-        'recommendations': m.recommendations.join('|'),
-        'date': m.date.toIso8601String(),
-      });
-    }
-
-    _loadData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Expedientes Nutricionales'),
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Buscar niño...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ),
-          Expanded(
-            child: _filteredChildren.isEmpty
-                ? const Center(child: Text('No hay registros'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _filteredChildren.length,
-                    itemBuilder: (context, index) => _buildChildCard(context, _filteredChildren[index]),
+      appBar: AppBar(title: Text('Integrantes: ${widget.group.name}')),
+      body: children.isEmpty
+          ? const Center(child: Text('No hay niños registrados en este grupo'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: children.length,
+              itemBuilder: (context, index) {
+                final child = children[index];
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(child.ageDisplay),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => HistoryScreen(child: child)),
+                    ),
                   ),
-          ),
-        ],
-      ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddDialog(context),
-        label: const Text('Nuevo'),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => RegistrationScreen(groupId: widget.group.id)),
+          );
+          if (result != null) _loadChildren();
+        },
+        label: const Text('Agregar Niño'),
         icon: const Icon(Icons.add),
       ),
     );
   }
-
-  Widget _buildChildCard(BuildContext context, Child child) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => HistoryScreen(child: child))),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              const CircleAvatar(child: Icon(Icons.person)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text(child.ageDisplay),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showAddDialog(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => const RegistrationScreen())).then((result) {
-      if (result != null) _addChild(result);
-    });
-  }
 }
 
-// --- PANTALLA DE HISTORIAL ---
+// --- PANTALLA DE HISTORIAL (Igual a la anterior pero con mejoras) ---
 class HistoryScreen extends StatefulWidget {
   final Child child;
   const HistoryScreen({super.key, required this.child});
@@ -317,7 +328,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Historial de ${widget.child.name}')),
+      appBar: AppBar(title: Text('Historial: ${widget.child.name}')),
       body: widget.child.measurements.isEmpty
           ? const Center(child: Text('No hay mediciones'))
           : ListView(
@@ -337,212 +348,53 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildChart() {
-    // Ordenamos cronológicamente para el gráfico
-    final chartMeasurements = List<Measurement>.from(widget.child.measurements)
-      ..sort((a, b) => a.date.compareTo(b.date));
-
-    if (chartMeasurements.length < 2) {
-      return Card(
-        child: Container(
-          height: 150,
-          padding: const EdgeInsets.all(16),
-          child: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.show_chart, size: 40, color: Colors.grey),
-                Text('Se necesitan al menos 2 mediciones para ver el progreso'),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final chartMeasurements = List<Measurement>.from(widget.child.measurements)..sort((a, b) => a.date.compareTo(b.date));
+    if (chartMeasurements.length < 2) return const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Se necesitan 2 mediciones para el gráfico')));
 
     final firstTimestamp = chartMeasurements.first.date.millisecondsSinceEpoch.toDouble();
-
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('Evolución de Peso y IMC', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                  onPressed: () => _showChartInfo(context),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+            const Text('Evolución Nutricional', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
             SizedBox(
-              height: 250,
+              height: 200,
               child: LineChart(
                 LineChartData(
-                  gridData: const FlGridData(show: true, drawVerticalLine: true),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(
-                      axisNameWidget: const Text('Tiempo'),
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          return const Text('');
-                        },
-                      ),
-                    ),
-                    leftTitles: const AxisTitles(
-                      axisNameWidget: Text('Valor'),
-                      sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-                    ),
-                  ),
-                  borderData: FlBorderData(show: true, border: Border.all(color: Colors.black12)),
+                  gridData: const FlGridData(show: false),
+                  titlesData: const FlTitlesData(show: false),
                   lineBarsData: [
                     LineChartBarData(
                       spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.weight)).toList(),
-                      isCurved: true,
                       color: Colors.blue,
-                      barWidth: 4,
-                      dotData: const FlDotData(show: true),
-                      belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.1)),
-                    ),
-                    LineChartBarData(
-                      spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.bmi)).toList(),
                       isCurved: true,
-                      color: Colors.green,
-                      barWidth: 4,
-                      dotData: const FlDotData(show: true),
-                      belowBarData: BarAreaData(show: true, color: Colors.green.withOpacity(0.1)),
+                      belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.1)),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildLegendItem('Peso (kg)', Colors.blue),
-                const SizedBox(width: 20),
-                _buildLegendItem('IMC', Colors.green),
-              ],
-            ),
-            const Divider(height: 32),
-            _buildSummaryText(chartMeasurements),
+            const Divider(),
+            _buildSummary(chartMeasurements),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSummaryText(List<Measurement> measurements) {
-    if (measurements.length < 2) return const SizedBox.shrink();
-
+  Widget _buildSummary(List<Measurement> measurements) {
     final latest = measurements.last;
-    final previous = measurements[measurements.length - 2];
-    
-    double weightDiff = latest.weight - previous.weight;
-    String weightText = weightDiff > 0 
-        ? "ha aumentado ${weightDiff.toStringAsFixed(1)}kg" 
-        : weightDiff < 0 
-            ? "ha disminuido ${weightDiff.abs().toStringAsFixed(1)}kg" 
-            : "se mantiene igual";
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Resumen de progreso:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-          const SizedBox(height: 4),
-          Text(
-            'Desde la última medición, el peso $weightText. '
-            'Su estado actual es "${latest.nutritionalStatus}".',
-            style: const TextStyle(fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showChartInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¿Cómo leer este gráfico?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoItem(Colors.blue, 'Peso (Línea Azul):', 'Muestra cuánto pesa el niño en kg. Es normal que suba a medida que crece.'),
-            const SizedBox(height: 12),
-            _buildInfoItem(Colors.green, 'IMC (Línea Verde):', 'Es la relación entre peso y altura. Si sube mucho, indica riesgo de sobrepeso; si baja mucho, riesgo de bajo peso.'),
-            const SizedBox(height: 12),
-            const Text('La meta es que ambas líneas tengan una tendencia estable y no cambios bruscos.', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoItem(Color color, String title, String description) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 20),
-          child: Text(description, style: const TextStyle(fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(String text, Color color) {
-    return Row(
-      children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12)),
-      ],
-    );
+    return Text('Estado actual: ${latest.nutritionalStatus}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue));
   }
 
   Widget _buildMeasurementCard(Measurement measurement) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: measurement.statusColor.withOpacity(0.2),
-          child: Icon(Icons.fitness_center, color: measurement.statusColor),
-        ),
         title: Text('${measurement.weight}kg - ${measurement.height}cm', style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('${measurement.nutritionalStatus} | ${measurement.date.day}/${measurement.date.month}/${measurement.date.year}'),
-        trailing: Text('IMC: ${measurement.bmi.toStringAsFixed(1)}', style: TextStyle(color: measurement.statusColor, fontWeight: FontWeight.bold)),
+        subtitle: Text(measurement.nutritionalStatus),
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -550,26 +402,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Recomendaciones:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                ...measurement.recommendations.map((tip) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle_outline, size: 16, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(tip)),
-                        ],
-                      ),
-                    )),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.restaurant_menu, size: 18),
-                    label: const Text('Ver ejemplos de alimentos'),
-                    onPressed: () => _showFoodExamples(context, measurement.nutritionalStatus),
-                  ),
-                ),
+                ...measurement.recommendations.map((e) => Text('• $e')),
               ],
             ),
           )
@@ -578,92 +411,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  void _showFoodExamples(BuildContext context, String status) {
-    // Obtenemos los grupos de alimentos basados en el estado
-    // Para simplificar en esta vista, re-consultamos la lógica
-    // En una app real, esto podría venir del modelo
-    final diag = NutriLogic.getDiagnosis(20, 100); // Dummy para obtener estructura
-    // Buscamos los alimentos correctos según el status
-    Map<String, String> foods = {};
-    if (status.contains('Bajo')) {
-      foods = {
-        'Proteínas': 'Huevo, pollo, lentejas, frijoles.',
-        'Grasas Saludables': 'Palta, aceite de oliva, maní.',
-        'Energía': 'Plátano, avena, camote.'
-      };
-    } else if (status == 'Normal') {
-      foods = {
-        'Variedad': 'Brócoli, espinaca, manzana, papaya.',
-        'Proteínas Magras': 'Pescado, pavita, queso fresco.',
-        'Hidratación': 'Agua pura, jugos sin azúcar.'
-      };
-    } else {
-      foods = {
-        'Fibras': 'Avena integral, chia, verduras verdes.',
-        'Frutas recomendadas': 'Melón, fresas, mandarina.',
-        'Sustitutos': 'Pan integral, stevia, alimentos al vapor.'
-      };
+  void _showAddMeasurementDialog(BuildContext context) async {
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => RegistrationScreen(child: widget.child)));
+    if (result != null && result is Measurement) {
+      final db = DatabaseHelper();
+      await db.insertMeasurement({
+        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'childId': widget.child.id,
+        'weight': result.weight,
+        'height': result.height,
+        'nutritionalStatus': result.nutritionalStatus,
+        'statusColor': result.statusColor.value,
+        'recommendations': result.recommendations.join('|'),
+        'date': result.date.toIso8601String(),
+      });
+      setState(() {
+        widget.child.measurements.add(result);
+        widget.child.measurements.sort((a, b) => b.date.compareTo(a.date));
+      });
     }
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Alimentos sugeridos para $status', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            ...foods.entries.map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                  Text(e.value),
-                ],
-              ),
-            )),
-            const SizedBox(height: 16),
-            Center(
-              child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAddMeasurementDialog(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => RegistrationScreen(child: widget.child))).then((result) async {
-      if (result != null && result is Measurement) {
-        final db = DatabaseHelper();
-        await db.insertMeasurement({
-          'id': DateTime.now().millisecondsSinceEpoch.toString(),
-          'childId': widget.child.id,
-          'weight': result.weight,
-          'height': result.height,
-          'nutritionalStatus': result.nutritionalStatus,
-          'statusColor': result.statusColor.value,
-          'recommendations': result.recommendations.join('|'),
-          'date': result.date.toIso8601String(),
-        });
-        
-        setState(() {
-          widget.child.measurements.add(result);
-          widget.child.measurements.sort((a, b) => b.date.compareTo(a.date));
-        });
-      }
-    });
   }
 }
 
 // --- PANTALLA DE REGISTRO ---
 class RegistrationScreen extends StatefulWidget {
+  final String? groupId;
   final Child? child;
-  const RegistrationScreen({super.key, this.child});
+  const RegistrationScreen({super.key, this.groupId, this.child});
 
   @override
   State<RegistrationScreen> createState() => _RegistrationScreenState();
@@ -674,7 +448,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
   final _heightController = TextEditingController();
-  final _dateController = TextEditingController();
   DateTime? _selectedDate;
 
   @override
@@ -683,48 +456,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     if (widget.child != null) {
       _nameController.text = widget.child!.name;
       _selectedDate = widget.child!.birthDate;
-      _dateController.text = _selectedDate!.toLocal().toString().split(' ')[0];
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _weightController.dispose();
-    _heightController.dispose();
-    _dateController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime(2010),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      setState(() {
-        _selectedDate = picked;
-        _dateController.text = picked.toLocal().toString().split(' ')[0];
-      });
-    }
-  }
-
-  void _save() {
-    if (_formKey.currentState!.validate() && _selectedDate != null) {
-      final weight = double.tryParse(_weightController.text);
-      final height = double.tryParse(_heightController.text);
-
-      if (weight == null || height == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor ingrese valores numéricos válidos')),
-        );
-        return;
-      }
-
+  void _save() async {
+    if (_formKey.currentState!.validate() && (widget.child != null || _selectedDate != null)) {
+      final weight = double.parse(_weightController.text);
+      final height = double.parse(_heightController.text);
       final diag = NutriLogic.getDiagnosis(weight, height);
-
       final measurement = Measurement(
         weight: weight,
         height: height,
@@ -735,13 +474,25 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       );
 
       if (widget.child == null) {
-        final child = Child(
-          id: DateTime.now().toString(),
-          name: _nameController.text,
-          birthDate: _selectedDate!,
-          measurements: [measurement],
-        );
-        Navigator.pop(context, child);
+        final db = DatabaseHelper();
+        final childId = DateTime.now().toString();
+        await db.insertChild({
+          'id': childId,
+          'groupId': widget.groupId,
+          'name': _nameController.text,
+          'birthDate': _selectedDate!.toIso8601String(),
+        });
+        await db.insertMeasurement({
+          'id': DateTime.now().millisecondsSinceEpoch.toString(),
+          'childId': childId,
+          'weight': measurement.weight,
+          'height': measurement.height,
+          'nutritionalStatus': measurement.nutritionalStatus,
+          'statusColor': measurement.statusColor.value,
+          'recommendations': measurement.recommendations.join('|'),
+          'date': measurement.date.toIso8601String(),
+        });
+        Navigator.pop(context, true);
       } else {
         Navigator.pop(context, measurement);
       }
@@ -751,42 +502,27 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.child == null ? 'Nuevo Niño' : 'Nueva Medición')),
+      appBar: AppBar(title: Text(widget.child == null ? 'Registrar Integrante' : 'Nueva Medición')),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
             if (widget.child == null) ...[
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nombre'),
-                validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
-              ),
+              TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'Nombre')),
               const SizedBox(height: 16),
-              TextFormField(
-                readOnly: true,
-                decoration: const InputDecoration(labelText: 'Fecha de Nacimiento'),
-                onTap: _selectDate,
-                controller: _dateController,
-                validator: (value) => _selectedDate == null ? 'Selecciona fecha' : null,
+              ListTile(
+                title: Text(_selectedDate == null ? 'Seleccionar Fecha Nac.' : _selectedDate!.toLocal().toString().split(' ')[0]),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: () async {
+                  final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2010), lastDate: DateTime.now());
+                  if (picked != null) setState(() => _selectedDate = picked);
+                },
               ),
-              const SizedBox(height: 16),
             ],
-            TextFormField(
-              controller: _weightController,
-              decoration: const InputDecoration(labelText: 'Peso (kg)'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _heightController,
-              decoration: const InputDecoration(labelText: 'Altura (cm)'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
-            ),
-            const SizedBox(height: 24),
+            TextFormField(controller: _weightController, decoration: const InputDecoration(labelText: 'Peso (kg)'), keyboardType: TextInputType.number),
+            TextFormField(controller: _heightController, decoration: const InputDecoration(labelText: 'Altura (cm)'), keyboardType: TextInputType.number),
+            const SizedBox(height: 32),
             ElevatedButton(onPressed: _save, child: const Text('Guardar')),
           ],
         ),
