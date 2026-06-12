@@ -64,10 +64,14 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute('CREATE TABLE groups (id TEXT PRIMARY KEY, name TEXT NOT NULL)');
-      await db.execute('ALTER TABLE children ADD COLUMN groupId TEXT');
-      await db.insert('groups', {'id': 'default', 'name': 'Sin Grupo'});
-      await db.execute('UPDATE children SET groupId = "default"');
+      await db.execute('CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, name TEXT NOT NULL)');
+      try {
+        await db.execute('ALTER TABLE children ADD COLUMN groupId TEXT');
+      } catch (e) {
+        // La columna ya existe
+      }
+      await db.insert('groups', {'id': 'default', 'name': 'Sin Grupo'}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await db.execute("UPDATE children SET groupId = 'default'");
     }
   }
 
