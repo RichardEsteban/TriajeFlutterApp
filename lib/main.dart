@@ -191,7 +191,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nutri Expert - Grupos')),
+      appBar: AppBar(title: const Text('Nutri Expert - Familias')),
       body: groups.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
@@ -200,8 +200,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
               itemBuilder: (context, index) {
                 final group = groups[index];
                 return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
-                    leading: const Icon(Icons.group, color: Colors.blue),
+                    leading: const CircleAvatar(child: Icon(Icons.group)),
                     title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: const Text('Toca para ver integrantes'),
                     trailing: IconButton(
@@ -218,7 +219,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddGroupDialog(),
-        label: const Text('Nuevo Grupo'),
+        label: const Text('Nueva Familia'),
         icon: const Icon(Icons.add),
       ),
     );
@@ -236,11 +237,20 @@ class ChildrenListScreen extends StatefulWidget {
 
 class _ChildrenListScreenState extends State<ChildrenListScreen> {
   List<Child> children = [];
+  List<Child> _filteredChildren = [];
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadChildren();
+    _searchController.addListener(_filterChildren);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadChildren() async {
@@ -272,6 +282,14 @@ class _ChildrenListScreenState extends State<ChildrenListScreen> {
 
     setState(() {
       children = loaded;
+      _filterChildren();
+    });
+  }
+
+  void _filterChildren() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredChildren = children.where((child) => child.name.toLowerCase().contains(query)).toList();
     });
   }
 
@@ -279,27 +297,45 @@ class _ChildrenListScreenState extends State<ChildrenListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Integrantes: ${widget.group.name}')),
-      body: children.isEmpty
-          ? const Center(child: Text('No hay niños registrados en este grupo'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: children.length,
-              itemBuilder: (context, index) {
-                final child = children[index];
-                return Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.person)),
-                    title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(child.ageDisplay),
-                    trailing: const Icon(Icons.arrow_forward_ios),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => HistoryScreen(child: child)),
-                    ),
-                  ),
-                );
-              },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Buscar niño...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
+          ),
+          Expanded(
+            child: _filteredChildren.isEmpty
+                ? const Center(child: Text('No hay niños registrados'))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _filteredChildren.length,
+                    itemBuilder: (context, index) {
+                      final child = _filteredChildren[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          leading: const CircleAvatar(child: Icon(Icons.person)),
+                          title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(child.ageDisplay),
+                          trailing: const Icon(Icons.arrow_forward_ios),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => HistoryScreen(child: child)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final result = await Navigator.push(
@@ -315,7 +351,7 @@ class _ChildrenListScreenState extends State<ChildrenListScreen> {
   }
 }
 
-// --- PANTALLA DE HISTORIAL (Igual a la anterior pero con mejoras) ---
+// --- PANTALLA DE HISTORIAL ---
 class HistoryScreen extends StatefulWidget {
   final Child child;
   const HistoryScreen({super.key, required this.child});
@@ -349,52 +385,186 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildChart() {
     final chartMeasurements = List<Measurement>.from(widget.child.measurements)..sort((a, b) => a.date.compareTo(b.date));
-    if (chartMeasurements.length < 2) return const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Se necesitan 2 mediciones para el gráfico')));
+    if (chartMeasurements.length < 2) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16), 
+          child: Center(child: Text('Se necesitan al menos 2 mediciones para ver el progreso'))
+        )
+      );
+    }
 
     final firstTimestamp = chartMeasurements.first.date.millisecondsSinceEpoch.toDouble();
+
     return Card(
       elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
         child: Column(
           children: [
-            const Text('Evolución Nutricional', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Evolución Nutricional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  onPressed: () => _showChartInfo(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
             SizedBox(
-              height: 200,
+              height: 250,
               child: LineChart(
                 LineChartData(
-                  gridData: const FlGridData(show: false),
-                  titlesData: const FlTitlesData(show: false),
+                  gridData: const FlGridData(show: true, drawVerticalLine: true),
+                  titlesData: const FlTitlesData(
+                    show: true,
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true, border: Border.all(color: Colors.black12)),
                   lineBarsData: [
                     LineChartBarData(
                       spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.weight)).toList(),
-                      color: Colors.blue,
                       isCurved: true,
+                      color: Colors.blue,
+                      barWidth: 4,
+                      dotData: const FlDotData(show: true),
                       belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.1)),
+                    ),
+                    LineChartBarData(
+                      spots: chartMeasurements.map((m) => FlSpot(m.date.millisecondsSinceEpoch.toDouble() - firstTimestamp, m.bmi)).toList(),
+                      isCurved: true,
+                      color: Colors.green,
+                      barWidth: 4,
+                      dotData: const FlDotData(show: true),
+                      belowBarData: BarAreaData(show: true, color: Colors.green.withOpacity(0.1)),
                     ),
                   ],
                 ),
               ),
             ),
-            const Divider(),
-            _buildSummary(chartMeasurements),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLegendItem('Peso (kg)', Colors.blue),
+                const SizedBox(width: 20),
+                _buildLegendItem('IMC', Colors.green),
+              ],
+            ),
+            const Divider(height: 32),
+            _buildSummaryText(chartMeasurements),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSummary(List<Measurement> measurements) {
+  Widget _buildSummaryText(List<Measurement> measurements) {
+    if (measurements.length < 2) return const SizedBox.shrink();
+
     final latest = measurements.last;
-    return Text('Estado actual: ${latest.nutritionalStatus}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue));
+    final previous = measurements[measurements.length - 2];
+    
+    double weightDiff = latest.weight - previous.weight;
+    String weightText = weightDiff > 0 
+        ? "ha aumentado ${weightDiff.toStringAsFixed(1)}kg" 
+        : weightDiff < 0 
+            ? "ha disminuido ${weightDiff.abs().toStringAsFixed(1)}kg" 
+            : "se mantiene igual";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Resumen de progreso:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+          const SizedBox(height: 4),
+          Text(
+            'Desde la última medición, el peso $weightText. '
+            'Su estado actual es "${latest.nutritionalStatus}".',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChartInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Cómo leer este gráfico?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoItem(Colors.blue, 'Peso (Línea Azul):', 'Muestra cuánto pesa el niño en kg. Es normal que suba a medida que crece.'),
+            const SizedBox(height: 12),
+            _buildInfoItem(Colors.green, 'IMC (Línea Verde):', 'Es la relación entre peso y altura. Si sube mucho, indica riesgo de sobrepeso; si baja mucho, riesgo de bajo peso.'),
+            const SizedBox(height: 12),
+            const Text('La meta es que ambas líneas tengan una tendencia estable.', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(Color color, String title, String description) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: Text(description, style: const TextStyle(fontSize: 13)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String text, Color color) {
+    return Row(
+      children: [
+        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 12)),
+      ],
+    );
   }
 
   Widget _buildMeasurementCard(Measurement measurement) {
     return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: measurement.statusColor.withOpacity(0.2),
+          child: Icon(Icons.fitness_center, color: measurement.statusColor),
+        ),
         title: Text('${measurement.weight}kg - ${measurement.height}cm', style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(measurement.nutritionalStatus),
+        trailing: Text('IMC: ${measurement.bmi.toStringAsFixed(1)}', style: TextStyle(color: measurement.statusColor, fontWeight: FontWeight.bold)),
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -402,11 +572,83 @@ class _HistoryScreenState extends State<HistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Recomendaciones:', style: TextStyle(fontWeight: FontWeight.bold)),
-                ...measurement.recommendations.map((e) => Text('• $e')),
+                const SizedBox(height: 8),
+                ...measurement.recommendations.map((tip) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline, size: 16, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(tip)),
+                    ],
+                  ),
+                )),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.restaurant_menu, size: 18),
+                    label: const Text('Ver ejemplos de alimentos'),
+                    onPressed: () => _showFoodExamples(context, measurement.nutritionalStatus),
+                  ),
+                ),
               ],
             ),
           )
         ],
+      ),
+    );
+  }
+
+  void _showFoodExamples(BuildContext context, String status) {
+    Map<String, String> foods = {};
+    if (status.contains('Bajo')) {
+      foods = {
+        'Proteínas': 'Huevo, pollo, lentejas, frijoles.',
+        'Grasas Saludables': 'Palta, aceite de oliva, maní.',
+        'Energía': 'Plátano, avena, camote.'
+      };
+    } else if (status == 'Normal') {
+      foods = {
+        'Variedad': 'Brócoli, espinaca, manzana, papaya.',
+        'Proteínas Magras': 'Pescado, pavita, queso fresco.',
+        'Hidratación': 'Agua pura, jugos sin azúcar.'
+      };
+    } else {
+      foods = {
+        'Fibras': 'Avena integral, chia, verduras verdes.',
+        'Frutas recomendadas': 'Melón, fresas, mandarina.',
+        'Sustitutos': 'Pan integral, stevia, alimentos al vapor.'
+      };
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Alimentos sugeridos para $status', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            ...foods.entries.map((e) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                  Text(e.value),
+                ],
+              ),
+            )),
+            const SizedBox(height: 16),
+            Center(
+              child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+            )
+          ],
+        ),
       ),
     );
   }
