@@ -29,10 +29,6 @@ flutter pub get
 flutter run
 ```
 
-## Estado
 
-En desarrollo activo (8 commits); la app ya soporta persistencia en Windows ademas de movil.
-
----
 
 Desarrollado por Richard Esteban
